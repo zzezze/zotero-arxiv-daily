@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 import arxiv
 from datetime import datetime
 
-def rerank_paper(candidate:list[arxiv.Result],corpus:list[dict],model:str='avsolatorio/GIST-small-Embedding-v0') -> np.ndarray:
+def rerank_paper(candidate:list[arxiv.Result],corpus:list[dict],model:str='avsolatorio/GIST-small-Embedding-v0') -> list[arxiv.Result]:
     encoder = SentenceTransformer(model)
     #sort corpus by date, from newest to oldest
     corpus = sorted(corpus,key=lambda x: datetime.strptime(x['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),reverse=True)

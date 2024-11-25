@@ -12,6 +12,9 @@ from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import parseaddr, formataddr
 import smtplib
+from tldr import get_paper_tldr
+from llama_cpp import Llama
+from tqdm import tqdm
 
 def get_zotero_corpus(id:str,key:str) -> list[dict]:
     zot = zotero.Zotero(id, 'user', key)
@@ -83,6 +86,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Recommender system for academic papers')
     parser.add_argument('--zotero_id', type=str, help='Zotero user ID',default=os.environ.get('ZOTERO_ID'))
     parser.add_argument('--zotero_key', type=str, help='Zotero API key',default=os.environ.get('ZOTERO_KEY'))
+    parser.add_argument('--max_paper_num', type=int, help='Maximum number of papers to recommend',default=os.environ.get('MAX_PAPER_NUM',100))
     parser.add_argument('--arxiv_query', type=str, help='Arxiv search query',default=os.environ.get('ARXIV_QUERY'))
     parser.add_argument('--smtp_server', type=str, help='SMTP server',default=os.environ.get('SMTP_SERVER'))
     parser.add_argument('--smtp_port', type=int, help='SMTP port',default=os.environ.get('SMTP_PORT'))
@@ -93,7 +97,7 @@ if __name__ == '__main__':
     assert args.zotero_id is not None
     assert args.zotero_key is not None
     assert args.arxiv_query is not None
-    today = datetime.datetime.now(tz=datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.datetime.now(tz=datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - datetime.timedelta(days=3)
     yesterday = today - datetime.timedelta(days=1)
     print("Retrieving Zotero corpus...")
     corpus = get_zotero_corpus(args.zotero_id, args.zotero_key)
@@ -104,6 +108,19 @@ if __name__ == '__main__':
         exit(0)
     print("Reranking papers...")
     papers = rerank_paper(papers, corpus)
+    if args.max_paper_num != -1:
+        papers = papers[:args.max_paper_num]
+    
+    print("Generating TLDRs...")
+    llm = Llama.from_pretrained(
+        repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
+        filename="qwen2.5-3b-instruct-q4_k_m.gguf",
+        n_ctx=4096,
+        n_threads=4
+    )
+    for p in tqdm(papers):
+        p.tldr = get_paper_tldr(p, llm)
+
     html = render_email(papers)
     print("Sending email...")
     send_email(args.sender, args.receiver, args.password, args.smtp_server, args.smtp_port, html)

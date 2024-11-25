@@ -6,7 +6,7 @@ framework = """
 <head>
   <style>
     .star-wrapper {
-      font-size: 2em; /* 调整星星大小 */
+      font-size: 1.3em; /* 调整星星大小 */
       line-height: 1; /* 确保垂直对齐 */
       display: inline-flex;
       align-items: center; /* 保持对齐 */
@@ -66,7 +66,7 @@ def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, 
     </tr>
     <tr>
         <td style="font-size: 14px; color: #333; padding: 8px 0;">
-            <strong>Abstract:</strong> {abstract}
+            <strong>TLDR:</strong> {abstract}
         </td>
     </tr>
 
@@ -101,16 +101,18 @@ def render_email(papers:list[arxiv.Result]):
     parts = []
     for p in papers:
         # crop the abstract
+        '''
         summary = p.summary
         summary = summary[:min(600, len(summary))]
         if len(summary) == 600:
             summary += '...'
+        '''
         rate = get_stars(p.score)
         authors = [a.name for a in p.authors[:5]]
         authors = ', '.join(authors)
         if len(p.authors) > 5:
             authors += ', ...'
-        parts.append(get_block_html(p.title, authors,rate,p.arxiv_id ,summary, p.pdf_url, p.code_url))
+        parts.append(get_block_html(p.title, authors,rate,p.arxiv_id ,p.tldr, p.pdf_url, p.code_url))
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
     return framework.replace('__CONTENT__', content)
