@@ -2,11 +2,10 @@ name: Send emails daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 22 * * *'
 
 jobs:
   calculate-and-send:
-    environment: default
     runs-on: ubuntu-latest
     steps:
         - name: Checkout
