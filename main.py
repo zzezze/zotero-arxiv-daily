@@ -116,7 +116,7 @@ if __name__ == '__main__':
         repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
         filename="qwen2.5-3b-instruct-q4_k_m.gguf",
         n_ctx=4096,
-        verbose=False
+        n_threads=4
     )
     for p in tqdm(papers):
         p.tldr = get_paper_tldr(p, llm)

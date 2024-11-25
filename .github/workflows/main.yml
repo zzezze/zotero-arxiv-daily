@@ -7,7 +7,7 @@ on:
 jobs:
   calculate-and-send:
     environment: default
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
         - name: Checkout
           uses: actions/checkout@v4
