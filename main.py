@@ -55,14 +55,24 @@ def get_arxiv_paper(query:str, start:datetime.datetime, end:datetime.datetime) -
     client = arxiv.Client()
     search = arxiv.Search(query=query, sort_by=arxiv.SortCriterion.SubmittedDate)
     papers = []
-    for i in client.results(search):
-        published_date = i.published
-        if published_date < end and published_date >= start:
-            i.arxiv_id = re.sub(r'v\d+$', '', i.get_short_id())
-            i.code_url = get_paper_code_url(i)
-            papers.append(i)
-        elif published_date < start:
+    retry_num = 5
+    while retry_num > 0:
+        try:
+            for i in client.results(search):
+                published_date = i.published
+                if published_date < end and published_date >= start:
+                    i.arxiv_id = re.sub(r'v\d+$', '', i.get_short_id())
+                    i.code_url = get_paper_code_url(i)
+                    papers.append(i)
+                elif published_date < start:
+                    break
             break
+        except Exception as e:
+            print(f'Got error: {e}. Try again...')
+            sleep(180)
+            retry_num -= 1
+            if retry_num == 0:
+                raise e
     return papers
 
 def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:int, html:str,):
@@ -116,7 +126,8 @@ if __name__ == '__main__':
         repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
         filename="qwen2.5-3b-instruct-q4_k_m.gguf",
         n_ctx=4096,
-        n_threads=4
+        n_threads=4,
+        verbose=False
     )
     for p in tqdm(papers):
         p.tldr = get_paper_tldr(p, llm)
