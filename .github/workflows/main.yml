@@ -27,5 +27,6 @@ jobs:
             SENDER: ${{ secrets.SENDER }}
             RECEIVER: ${{ secrets.RECEIVER }}
             SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+            MAX_PAPER_NUM: ${{ secrets.MAX_PAPER_NUM }}
           run: |
             uv run main.py
