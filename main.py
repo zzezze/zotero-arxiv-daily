@@ -54,9 +54,9 @@ def get_paper_code_url(paper:arxiv.Result) -> str:
 def get_arxiv_paper(query:str, start:datetime.datetime, end:datetime.datetime) -> list[arxiv.Result]:
     client = arxiv.Client()
     search = arxiv.Search(query=query, sort_by=arxiv.SortCriterion.SubmittedDate)
-    papers = []
     retry_num = 5
     while retry_num > 0:
+        papers = []
         try:
             for i in client.results(search):
                 published_date = i.published
