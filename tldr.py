@@ -40,7 +40,10 @@ def get_paper_summary(paper:arxiv.Result) -> str:
     return introduction, conclusion
 
 def get_paper_tldr(paper:arxiv.Result, model:Llama) -> str:
-    introduction, conclusion = get_paper_summary(paper)
+    try:
+        introduction, conclusion = get_paper_summary(paper)
+    except:
+        introduction, conclusion = "", ""
     prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a one-sentence TLDR summary:
     
     \\title{__TITLE__}
