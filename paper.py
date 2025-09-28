@@ -4,12 +4,14 @@ from tempfile import TemporaryDirectory
 import arxiv
 import tarfile
 import re
+import time
 from llm import get_llm
 import requests
 from requests.adapters import HTTPAdapter, Retry
 from loguru import logger
 import tiktoken
 from contextlib import ExitStack
+from urllib.error import HTTPError
 
 
 
@@ -66,7 +68,20 @@ class ArxivPaper:
     def tex(self) -> dict[str,str]:
         with ExitStack() as stack:
             tmpdirname = stack.enter_context(TemporaryDirectory())
-            file = self._paper.download_source(dirpath=tmpdirname)
+            # file = self._paper.download_source(dirpath=tmpdirname)
+            try:
+                # 尝试下载源文件
+                file = self._paper.download_source(dirpath=tmpdirname)
+            except HTTPError as e:
+                # 捕获 HTTP 错误
+                if e.code == 404:
+                    # 如果是 404 Not Found，说明源文件不存在，这是正常情况
+                    logger.warning(f"Source for {self.arxiv_id} not found (404). Skipping source analysis.")
+                    return None # 直接返回 None，后续依赖 tex 的代码会安全地处理
+                else:
+                    # 如果是其他 HTTP 错误 (如 503)，这可能是临时性问题，值得记录下来
+                    logger.error(f"HTTP Error {e.code} when downloading source for {self.arxiv_id}: {e.reason}")
+                    raise # 重新抛出异常，因为这可能是个需要关注的严重问题
             try:
                 tar = stack.enter_context(tarfile.open(file))
             except tarfile.ReadError:
@@ -101,7 +116,7 @@ class ArxivPaper:
             file_contents = {}
             for t in tex_files:
                 f = tar.extractfile(t)
-                content = f.read().decode('utf-8')
+                content = f.read().decode('utf-8',errors='ignore')
                 #remove comments
                 content = re.sub(r'%.*\n', '\n', content)
                 content = re.sub(r'\\begin{comment}.*?\\end{comment}', '', content, flags=re.DOTALL)
@@ -154,13 +169,15 @@ class ArxivPaper:
             match = re.search(r'\\section\{Conclusion\}.*?(\\section|\\end\{document\}|\\bibliography|\\appendix|$)', content, flags=re.DOTALL)
             if match:
                 conclusion = match.group(0)
-        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a one-sentence TLDR summary:
+        llm = get_llm()
+        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a one-sentence TLDR summary in __LANG__:
         
         \\title{__TITLE__}
         \\begin{abstract}__ABSTRACT__\\end{abstract}
         __INTRODUCTION__
         __CONCLUSION__
         """
+        prompt = prompt.replace('__LANG__', llm.lang)
         prompt = prompt.replace('__TITLE__', self.title)
         prompt = prompt.replace('__ABSTRACT__', self.summary)
         prompt = prompt.replace('__INTRODUCTION__', introduction)
@@ -171,7 +188,7 @@ class ArxivPaper:
         prompt_tokens = enc.encode(prompt)
         prompt_tokens = prompt_tokens[:4000]  # truncate to 4000 tokens
         prompt = enc.decode(prompt_tokens)
-        llm = get_llm()
+        
         tldr = llm.generate(
             messages=[
                 {
@@ -190,7 +207,9 @@ class ArxivPaper:
             if content is None:
                 content = "\n".join(self.tex.values())
             #search for affiliations
-            match = re.search(r'\\author.*?\\maketitle', content, flags=re.DOTALL)
+            possible_regions = [r'\\author.*?\\maketitle',r'\\begin{document}.*?\\begin{abstract}']
+            matches = [re.search(p, content, flags=re.DOTALL) for p in possible_regions]
+            match = next((m for m in matches if m), None)
             if match:
                 information_region = match.group(0)
             else:

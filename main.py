@@ -24,7 +24,7 @@ def get_zotero_corpus(id:str,key:str) -> list[dict]:
     corpus = [c for c in corpus if c['data']['abstractNote'] != '']
     def get_collection_path(col_key:str) -> str:
         if p := collections[col_key]['data']['parentCollection']:
-            return get_collection_path(p) + ' / ' + collections[col_key]['data']['name']
+            return get_collection_path(p) + '/' + collections[col_key]['data']['name']
         else:
             return collections[col_key]['data']['name']
     for c in corpus:
@@ -135,6 +135,12 @@ if __name__ == '__main__':
         help="LLM Model Name",
         default="gpt-4o",
     )
+    add_argument(
+        "--language",
+        type=str,
+        help="Language of TLDR",
+        default="English",
+    )
     parser.add_argument('--debug', action='store_true', help='Debug mode')
     args = parser.parse_args()
     assert (
@@ -146,7 +152,7 @@ if __name__ == '__main__':
         logger.debug("Debug mode is on.")
     else:
         logger.remove()
-        logger.add(sys.stdout, level="WARNING")
+        logger.add(sys.stdout, level="INFO")
 
     logger.info("Retrieving Zotero corpus...")
     corpus = get_zotero_corpus(args.zotero_id, args.zotero_key)
@@ -168,10 +174,10 @@ if __name__ == '__main__':
             papers = papers[:args.max_paper_num]
         if args.use_llm_api:
             logger.info("Using OpenAI API as global LLM.")
-            set_global_llm(api_key=args.openai_api_key, base_url=args.openai_api_base, model=args.model_name)
+            set_global_llm(api_key=args.openai_api_key, base_url=args.openai_api_base, model=args.model_name, lang=args.language)
         else:
             logger.info("Using Local LLM as global LLM.")
-            set_global_llm()
+            set_global_llm(lang=args.language)
 
     html = render_email(papers)
     logger.info("Sending email...")
