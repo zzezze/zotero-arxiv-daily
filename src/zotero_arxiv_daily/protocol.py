@@ -68,7 +68,7 @@ class Paper:
             return tldr
         except Exception as e:
             logger.warning(f"Failed to generate tldr of {self.url}: {e}")
-            tldr = self.abstract[:200] + '...' if self.abstract and len(self.abstract) > 200 else self.abstract
+            tldr = (self.abstract[:200] + '...') if self.abstract and len(self.abstract) > 200 else (self.abstract or 'No summary available')
             self.tldr = tldr
             return tldr
 
@@ -81,8 +81,10 @@ class Paper:
             prompt = enc.decode(prompt_tokens)
             system_content = "You are an assistant who perfectly extracts affiliations of authors from a paper. You should return a python list of affiliations sorted by the author order, like [\"TsingHua University\",\"Peking University\"]. If an affiliation is consisted of multi-level affiliations, like 'Department of Computer Science, TsingHua University', you should return the top-level affiliation 'TsingHua University' only. Do not contain duplicated affiliations. If there is no affiliation found, you should return an empty list [ ]. You should only return the final list of affiliations, and do not return any intermediate results."
         else:
-            authors_str = ', '.join(self.authors) if self.authors else 'Unknown'
-            prompt = f"Given the following paper information, identify the most likely institutional affiliations of the authors based on your knowledge. Return the result as a python list.\n\nTitle: {self.title}\nAuthors: {authors_str}\n"
+            authors_str = ', '.join(self.authors) if self.authors else ''
+            prompt = f"Given the following paper information, identify the most likely institutional affiliations of the authors based on your knowledge. Return the result as a python list.\n\nTitle: {self.title}\n"
+            if authors_str:
+                prompt += f"Authors: {authors_str}\n"
             if self.abstract:
                 prompt += f"Abstract: {self.abstract}\n"
             prompt_tokens = enc.encode(prompt)
