@@ -20,10 +20,11 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    keywords: Optional[list[str]] = None
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
-        prompt = f"Given the following information of a paper, generate a one-sentence TLDR summary in {lang}:\n\n"
+        prompt = f"Given the following information of a paper, generate a concise one-sentence TLDR summary in {lang}. Be brief and focus on the core contribution:\n\n"
         if self.title:
             prompt += f"Title:\n {self.title}\n\n"
 
@@ -102,6 +103,46 @@ class Paper:
         except Exception as e:
             logger.warning(f"Failed to generate affiliations of {self.url}: {e}")
             self.affiliations = None
+            return None
+
+    def _generate_keywords_with_llm(self, openai_client:OpenAI,llm_params:dict) -> list[str]:
+        lang = llm_params.get('language', 'English')
+        prompt = f"Given the following information of a paper, extract 3-5 keywords in {lang} that best describe the paper's topics and methods:\n\n"
+        if self.title:
+            prompt += f"Title:\n {self.title}\n\n"
+        if self.abstract:
+            prompt += f"Abstract: {self.abstract}\n\n"
+
+        enc = tiktoken.encoding_for_model("gpt-4o")
+        prompt_tokens = enc.encode(prompt)
+        prompt_tokens = prompt_tokens[:2000]
+        prompt = enc.decode(prompt_tokens)
+
+        response = openai_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are an assistant who extracts concise keywords from scientific papers. Return exactly 3-5 keywords in {lang} as a JSON array of strings, e.g. [\"keyword1\", \"keyword2\", \"keyword3\"]. Return only the JSON array, nothing else.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            **llm_params.get('generation_kwargs', {})
+        )
+        raw = response.choices[0].message.content
+        match = re.search(r'\[.*?\]', raw, flags=re.DOTALL)
+        if match is None:
+            raise ValueError(f"LLM response did not contain a JSON array: {raw}")
+        keywords = json.loads(match.group(0))
+        return [str(k) for k in keywords]
+
+    def generate_keywords(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
+        try:
+            keywords = self._generate_keywords_with_llm(openai_client,llm_params)
+            self.keywords = keywords
+            return keywords
+        except Exception as e:
+            logger.warning(f"Failed to generate keywords of {self.url}: {e}")
+            self.keywords = None
             return None
 @dataclass
 class CorpusPaper:
