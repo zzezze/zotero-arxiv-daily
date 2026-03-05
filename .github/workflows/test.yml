@@ -28,7 +28,11 @@ jobs:
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
           export DEBUG=true
-          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
-          cat config/custom.yaml
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+            echo "Use custom config: "
+            cat config/custom.yaml
+          else
+            echo "CUSTOM_CONFIG is not set, using default config/custom.yaml"
+          fi
           uv run src/zotero_arxiv_daily/main.py
