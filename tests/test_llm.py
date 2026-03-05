@@ -63,3 +63,10 @@ def test_affiliations(config,paper:Paper):
     openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
     paper.generate_affiliations(openai_client, config.llm)
     assert paper.affiliations is not None
+
+def test_keywords(config,paper:Paper):
+    openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
+    paper.generate_keywords(openai_client, config.llm)
+    assert paper.keywords is not None
+    assert isinstance(paper.keywords, list)
+    assert len(paper.keywords) >= 1
