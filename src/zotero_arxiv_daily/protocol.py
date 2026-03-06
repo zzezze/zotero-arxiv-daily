@@ -20,15 +20,10 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
-    keywords: Optional[list[str]] = None
 
-    def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict, keywords:list[str]=None) -> str:
+    def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
-        keyword_instruction = ""
-        if keywords:
-            kw_str = ', '.join(keywords)
-            keyword_instruction = f" Focus the summary around these keywords: {kw_str}."
-        prompt = f"Given the following information of a paper, generate a concise summary in 2-3 sentences in {lang}. Be brief and focus on the core contribution and key findings.{keyword_instruction}\n\n"
+        prompt = f"Given the following information of a paper, generate a one-sentence TLDR summary in {lang}:\n\n"
         if self.title:
             prompt += f"Title:\n {self.title}\n\n"
 
@@ -52,7 +47,7 @@ class Paper:
             messages=[
                 {
                     "role": "system",
-                    "content": f"You are an assistant who perfectly summarizes scientific papers. Generate a concise summary in 2-3 sentences that captures the core idea, method, and key findings. Do NOT copy the abstract directly; instead, rephrase and condense it. Your answer should be in {lang}.",
+                    "content": f"You are an assistant who perfectly summarizes scientific paper, and gives the core idea of the paper to the user. Your answer should be in {lang}.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -61,55 +56,43 @@ class Paper:
         tldr = response.choices[0].message.content
         return tldr
     
-    def generate_tldr(self, openai_client:OpenAI,llm_params:dict, keywords:list[str]=None) -> str:
+    def generate_tldr(self, openai_client:OpenAI,llm_params:dict) -> str:
         try:
-            tldr = self._generate_tldr_with_llm(openai_client,llm_params, keywords=keywords)
+            tldr = self._generate_tldr_with_llm(openai_client,llm_params)
             self.tldr = tldr
             return tldr
         except Exception as e:
             logger.warning(f"Failed to generate tldr of {self.url}: {e}")
-            tldr = (self.abstract[:200] + '...') if self.abstract and len(self.abstract) > 200 else (self.abstract or 'No summary available')
+            tldr = self.abstract
             self.tldr = tldr
             return tldr
 
     def _generate_affiliations_with_llm(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
-        enc = tiktoken.encoding_for_model("gpt-4o")
         if self.full_text is not None:
             prompt = f"Given the beginning of a paper, extract the affiliations of the authors in a python list format, which is sorted by the author order. If there is no affiliation found, return an empty list '[]':\n\n{self.full_text}"
+            # use gpt-4o tokenizer for estimation
+            enc = tiktoken.encoding_for_model("gpt-4o")
             prompt_tokens = enc.encode(prompt)
             prompt_tokens = prompt_tokens[:2000]  # truncate to 2000 tokens
             prompt = enc.decode(prompt_tokens)
-            system_content = "You are an assistant who perfectly extracts affiliations of authors from a paper. You should return a python list of affiliations sorted by the author order, like [\"TsingHua University\",\"Peking University\"]. If an affiliation is consisted of multi-level affiliations, like 'Department of Computer Science, TsingHua University', you should return the top-level affiliation 'TsingHua University' only. Do not contain duplicated affiliations. If there is no affiliation found, you should return an empty list [ ]. You should only return the final list of affiliations, and do not return any intermediate results."
-        else:
-            authors_str = ', '.join(self.authors) if self.authors else ''
-            prompt = f"Given the following paper information, identify the most likely institutional affiliations of the authors based on your knowledge. Return the result as a python list.\n\nTitle: {self.title}\n"
-            if authors_str:
-                prompt += f"Authors: {authors_str}\n"
-            if self.abstract:
-                prompt += f"Abstract: {self.abstract}\n"
-            prompt_tokens = enc.encode(prompt)
-            prompt_tokens = prompt_tokens[:2000]
-            prompt = enc.decode(prompt_tokens)
-            system_content = "You are an assistant who identifies institutional affiliations of academic paper authors. Based on the paper title, author names, and abstract, infer the most likely top-level institutional affiliations (e.g., university or research institute names). Return a python list of affiliations like [\"MIT\",\"Stanford University\"]. Do not contain duplicated affiliations. If you cannot determine any affiliation with reasonable confidence, return an empty list [ ]. You should only return the final list of affiliations, and do not return any intermediate results."
+            affiliations = openai_client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an assistant who perfectly extracts affiliations of authors from a paper. You should return a python list of affiliations sorted by the author order, like [\"TsingHua University\",\"Peking University\"]. If an affiliation is consisted of multi-level affiliations, like 'Department of Computer Science, TsingHua University', you should return the top-level affiliation 'TsingHua University' only. Do not contain duplicated affiliations. If there is no affiliation found, you should return an empty list [ ]. You should only return the final list of affiliations, and do not return any intermediate results.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                **llm_params.get('generation_kwargs', {})
+            )
+            affiliations = affiliations.choices[0].message.content
 
-        affiliations = openai_client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_content,
-                },
-                {"role": "user", "content": prompt},
-            ],
-            **llm_params.get('generation_kwargs', {})
-        )
-        affiliations = affiliations.choices[0].message.content
+            affiliations = re.search(r'\[.*?\]', affiliations, flags=re.DOTALL).group(0)
+            affiliations = json.loads(affiliations)
+            affiliations = list(set(affiliations))
+            affiliations = [str(a) for a in affiliations]
 
-        affiliations = re.search(r'\[.*?\]', affiliations, flags=re.DOTALL).group(0)
-        affiliations = json.loads(affiliations)
-        affiliations = list(set(affiliations))
-        affiliations = [str(a) for a in affiliations]
-
-        return affiliations
+            return affiliations
     
     def generate_affiliations(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
         try:
@@ -119,46 +102,6 @@ class Paper:
         except Exception as e:
             logger.warning(f"Failed to generate affiliations of {self.url}: {e}")
             self.affiliations = None
-            return None
-
-    def _generate_keywords_with_llm(self, openai_client:OpenAI,llm_params:dict) -> list[str]:
-        lang = llm_params.get('language', 'English')
-        prompt = f"Given the following information of a paper, extract 3-5 keywords in {lang} that best describe the paper's topics and methods:\n\n"
-        if self.title:
-            prompt += f"Title:\n {self.title}\n\n"
-        if self.abstract:
-            prompt += f"Abstract: {self.abstract}\n\n"
-
-        enc = tiktoken.encoding_for_model("gpt-4o")
-        prompt_tokens = enc.encode(prompt)
-        prompt_tokens = prompt_tokens[:2000]
-        prompt = enc.decode(prompt_tokens)
-
-        response = openai_client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are an assistant who extracts concise keywords from scientific papers. Return exactly 3-5 keywords in {lang} as a JSON array of strings, e.g. [\"keyword1\", \"keyword2\", \"keyword3\"]. Return only the JSON array, nothing else.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            **llm_params.get('generation_kwargs', {})
-        )
-        raw = response.choices[0].message.content
-        match = re.search(r'\[.*?\]', raw, flags=re.DOTALL)
-        if match is None:
-            raise ValueError(f"LLM response did not contain a JSON array: {raw}")
-        keywords = json.loads(match.group(0))
-        return [str(k) for k in keywords]
-
-    def generate_keywords(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
-        try:
-            keywords = self._generate_keywords_with_llm(openai_client,llm_params)
-            self.keywords = keywords
-            return keywords
-        except Exception as e:
-            logger.warning(f"Failed to generate keywords of {self.url}: {e}")
-            self.keywords = None
             return None
 @dataclass
 class CorpusPaper:
